@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { SocketProvider } from '@/contexts/SocketContext'
@@ -30,6 +30,10 @@ const AppContent: React.FC = () => {
   const handleNavigate = (page: string) => {
     console.log('Navigating to:', page)
     setCurrentPage(page)
+    
+    // Dispatch a custom event to notify components of navigation
+    const event = new CustomEvent('navigate', { detail: page });
+    window.dispatchEvent(event);
   }
 
   const refreshUserData = async () => {
@@ -42,7 +46,7 @@ const AppContent: React.FC = () => {
     }
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail
       if (typeof detail === 'string') setCurrentPage(detail)
@@ -51,13 +55,16 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('navigate', handler as EventListener)
   }, [])
 
-  React.useEffect(() => {
+  useEffect(() => {
     const pending = localStorage.getItem('pending_deposit')
     if (pending) {
       try {
         const deposit = JSON.parse(pending)
         setPendingDeposit(deposit)
-        setCurrentPage('deposit-instructions')
+        // Only navigate to deposit-instructions if we're not already on a page that handles deposits
+        if (currentPage !== 'deposit-instructions' && currentPage !== 'dashboard') {
+          setCurrentPage('deposit-instructions')
+        }
       } catch (e) {
         localStorage.removeItem('pending_deposit')
       }
@@ -72,28 +79,45 @@ const AppContent: React.FC = () => {
       isAdmin
     })
 
-    if (pendingDeposit && currentPage === 'deposit-instructions') {
-      return (
-        <ChessDepositInstructions
-          depositInfo={pendingDeposit}
-          onModalClose={() => {
-            console.log('Modal closing - navigating to dashboard')
-            localStorage.removeItem('pending_deposit')
-            setPendingDeposit(null)
-            refreshUserData().then(() => {
-              setTimeout(() => {
-                setCurrentPage('dashboard')
-                console.log('Navigation to dashboard complete')
-              }, 100)
-            })
-          }}
-          onAccountDelete={() => {
-            localStorage.removeItem('pending_deposit')
-            setPendingDeposit(null)
-            setCurrentPage('login')
-          }}
-        />
-      )
+    // Handle deposit instructions page
+    if (currentPage === 'deposit-instructions') {
+      // Get deposit info from localStorage
+      const pending = localStorage.getItem('pending_deposit')
+      if (pending) {
+        try {
+          const deposit = JSON.parse(pending)
+          return (
+            <ChessDepositInstructions
+              depositInfo={deposit}
+              onModalClose={() => {
+                console.log('Modal closing - navigating to dashboard')
+                localStorage.removeItem('pending_deposit')
+                setPendingDeposit(null)
+                refreshUserData().then(() => {
+                  setTimeout(() => {
+                    setCurrentPage('dashboard')
+                    // Dispatch navigation event
+                    const event = new CustomEvent('navigate', { detail: 'dashboard' });
+                    window.dispatchEvent(event);
+                    console.log('Navigation to dashboard complete')
+                  }, 100)
+                })
+              }}
+              onAccountDelete={() => {
+                localStorage.removeItem('pending_deposit')
+                setPendingDeposit(null)
+                setCurrentPage('login')
+                // Dispatch navigation event
+                const event = new CustomEvent('navigate', { detail: 'login' });
+                window.dispatchEvent(event);
+              }}
+            />
+          )
+        } catch (e) {
+          localStorage.removeItem('pending_deposit')
+        }
+      }
+      // If no pending deposit, fall through to normal navigation
     }
 
     if (!user && !isAdmin) {

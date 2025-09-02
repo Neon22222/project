@@ -21,6 +21,7 @@ interface User {
 const ChessAdminUsers: React.FC = () => {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterPlan, setFilterPlan] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -31,78 +32,20 @@ const ChessAdminUsers: React.FC = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true)
+        setError(null)
         const response = await fetch('/api/admin/users')
         if (response.ok) {
           const data = await response.json()
           setUsers(data.users)
         } else {
-          // Mock data for demo
-          setUsers([
-            {
-              id: '1',
-              username: 'KingPlayer',
-              walletAddress: '0x1234...5678',
-              plan: 'King',
-              trianglePosition: 1,
-              triangleId: 'tri-001',
-              referralCode: 'KING123',
-              balance: 125.50,
-              totalEarned: 89.75,
-              createdAt: '2024-01-15',
-              status: 'active'
-            },
-            {
-              id: '2',
-              username: 'QueenNoble',
-              walletAddress: '0x5678...9012',
-              plan: 'Queen',
-              trianglePosition: 2,
-              triangleId: 'tri-001',
-              referralCode: 'QUEEN456',
-              balance: 89.25,
-              totalEarned: 67.50,
-              createdAt: '2024-01-14',
-              status: 'active'
-            },
-            {
-              id: '3',
-              username: 'BishopWarrior',
-              walletAddress: '0x9012...3456',
-              plan: 'Bishop',
-              referralCode: 'BISHOP789',
-              balance: 45.75,
-              totalEarned: 32.25,
-              createdAt: '2024-01-13',
-              status: 'pending'
-            },
-            {
-              id: '4',
-              username: 'KnightGuard',
-              walletAddress: '0x3456...7890',
-              plan: 'Knight',
-              trianglePosition: 4,
-              triangleId: 'tri-002',
-              referralCode: 'KNIGHT012',
-              balance: 23.50,
-              totalEarned: 15.75,
-              createdAt: '2024-01-12',
-              status: 'active'
-            },
-            {
-              id: '5',
-              username: 'SuspendedUser',
-              walletAddress: '0x7890...1234',
-              plan: 'Knight',
-              referralCode: 'SUSP345',
-              balance: 0,
-              totalEarned: 0,
-              createdAt: '2024-01-11',
-              status: 'suspended'
-            }
-          ])
+          const errorData = await response.json()
+          setError(errorData.error || 'Failed to fetch users')
+          setUsers([])
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch users:', error)
+        setError('Network error while fetching users')
+        setUsers([])
       } finally {
         setLoading(false)
       }
@@ -159,6 +102,9 @@ const ChessAdminUsers: React.FC = () => {
             ? { ...user, status: action === 'suspend' ? 'suspended' : action === 'activate' ? 'active' : user.status }
             : user
         ).filter(user => action !== 'delete' || user.id !== userId))
+      } else {
+        const errorData = await response.json()
+        console.error('Failed to update user:', errorData.error)
       }
     } catch (error) {
       console.error('Failed to update user:', error)

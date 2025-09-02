@@ -10,6 +10,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { username, password, walletAddress, planType, referrerId } = body
 
+    console.log('Registration attempt:', { username, walletAddress, planType, referrerId })
+
     // Validate required fields
     if (!username || !password || !walletAddress || !planType) {
       return NextResponse.json(
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingUser) {
+      console.log('User already exists:', existingUser.username)
       return NextResponse.json(
         { message: 'Username or wallet address already exists' },
         { status: 400 }
@@ -63,7 +66,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash password
+    console.log('Hashing password for user:', username)
     const hashedPassword = await bcrypt.hash(password, 12)
+    console.log('Password hashed successfully for user:', username)
 
     // Generate unique referral code
     const referralCode = `${username.toUpperCase()}_${Date.now()}`
@@ -80,10 +85,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Generate a unique email if not provided
+    const email = `${username}@forgechain.local`
+    
     // Create user
     const newUser = await prisma.user.create({
       data: {
         username,
+        email,
         password: hashedPassword,
         walletAddress,
         plan: planType,
@@ -96,6 +105,8 @@ export async function POST(request: NextRequest) {
         loginAttempts: 0
       }
     })
+
+    console.log('User created successfully:', newUser.username, 'with ID:', newUser.id)
 
     // Generate deposit information
     const depositInfo = {

@@ -34,27 +34,27 @@ const ChessAdminPlans: React.FC = () => {
           },
           {
             name: 'Queen',
-            price: 75,
-            payout: 225,
-            referralBonus: 7.5,
+            price: 50,
+            payout: 200,
+            referralBonus: 10,
             description: 'Noble position with excellent earning opportunities',
-            features: ['High payout multiplier (3x)', 'Level 2 position access', 'Royal status benefits']
+            features: ['High payout multiplier (4x)', 'Level 2 position access', 'Royal status benefits']
           },
           {
             name: 'Bishop',
-            price: 50,
+            price: 20,
             payout: 100,
-            referralBonus: 5,
+            referralBonus: 80,
             description: 'Strategic position for steady kingdom growth',
-            features: ['Balanced payout multiplier (2x)', 'Mid-tier position access', 'Stable earning potential']
+            features: ['Balanced payout multiplier (4x)', 'Mid-tier position access', 'Stable earning potential']
           },
           {
             name: 'Knight',
-            price: 25,
-            payout: 50,
-            referralBonus: 2.5,
+            price: 10,
+            payout: 40,
+            referralBonus: 10,
             description: 'Entry-level position to start your royal journey',
-            features: ['Entry payout multiplier (2x)', 'Foundation position access', 'Growth potential']
+            features: ['Entry payout multiplier (4x)', 'Foundation position access', 'Growth potential']
           }
         ])
       } finally {

@@ -58,7 +58,7 @@ const DepositInstructions: React.FC<DepositInstructionsProps> = ({
   const handleDepositConfirmation = async () => {
     setIsConfirming(true)
     try {
-      const response = await fetch('/api/transactions/deposit-confirm', {
+      const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transactionId: depositInfo.transactionId })

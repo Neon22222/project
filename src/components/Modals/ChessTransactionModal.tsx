@@ -81,7 +81,7 @@ const ChessTransactionModal: React.FC<ChessTransactionModalProps> = ({
           })
           
           await logout()
-          window.location.href = '/register'
+          window.dispatchEvent(new CustomEvent('navigate', { detail: 'register' }))
         } else {
           throw new Error('Failed to delete account')
         }

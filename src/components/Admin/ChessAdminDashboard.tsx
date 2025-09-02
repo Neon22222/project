@@ -41,6 +41,7 @@ const ChessAdminDashboard: React.FC = () => {
     const fetchAdminData = async () => {
       try {
         setLoading(true)
+        setError(null)
         const response = await fetch('/api/admin/overview')
         if (!response.ok) {
           throw new Error('Failed to fetch admin data')
@@ -51,24 +52,10 @@ const ChessAdminDashboard: React.FC = () => {
         setPendingActions(data.pendingActions)
       } catch (err: any) {
         setError(err.message || 'Failed to load admin data')
-        // Mock data for demo
-        setStats({
-          totalUsers: 156,
-          activeTriangles: 23,
-          pendingDeposits: 8,
-          pendingPayouts: 3,
-          totalRevenue: 12500.75
-        })
-        setRecentTransactions([
-          { id: '1', user: 'KingPlayer', type: 'deposit', plan: 'King', amount: '1.0 USDT', status: 'pending', time: '2 minutes ago' },
-          { id: '2', user: 'QueenNoble', type: 'payout', plan: 'Queen', amount: '150.0 USDT', status: 'confirmed', time: '15 minutes ago' },
-          { id: '3', user: 'BishopWarrior', type: 'deposit', plan: 'Bishop', amount: '0.5 USDT', status: 'confirmed', time: '1 hour ago' },
-        ])
-        setPendingActions([
-          { id: '1', type: 'deposit_approval', user: 'KingPlayer', amount: '1.0 USDT', priority: 'high' },
-          { id: '2', type: 'payout_approval', user: 'QueenNoble', amount: '150.0 USDT', priority: 'high' },
-          { id: '3', type: 'user_verification', user: 'BishopWarrior', amount: '0.5 USDT', priority: 'medium' },
-        ])
+        // Clear any previous data to avoid showing stale data
+        setStats(null)
+        setRecentTransactions([])
+        setPendingActions([])
       } finally {
         setLoading(false)
       }
@@ -170,15 +157,15 @@ const ChessAdminDashboard: React.FC = () => {
 
           {error && (
             <motion.div 
-              className="mb-8 royal-modal rounded-xl p-4 border border-yellow-500/30"
+              className="mb-8 royal-modal rounded-xl p-4 border border-red-500/30"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
             >
               <div className="flex items-center">
-                <AlertTriangle className="h-6 w-6 text-yellow-400 mr-3" />
+                <AlertTriangle className="h-6 w-6 text-red-400 mr-3" />
                 <div>
-                  <h3 className="font-bold text-yellow-400">Royal Advisory</h3>
-                  <p className="text-gray-300">Using demonstration data for council review</p>
+                  <h3 className="font-bold text-red-400">Royal Advisory</h3>
+                  <p className="text-gray-300">Error loading data: {error}</p>
                 </div>
               </div>
             </motion.div>

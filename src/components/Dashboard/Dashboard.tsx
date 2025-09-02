@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import TriangleVisualization from './TriangleVisualization'
 import ProgressBar from './ProgressBar'
 import ReferralModal from './ReferralModal'
-import PayoutRequestModal from './PayoutRequestModal'
+import ChessDepositInstructions from '@/components/Deposit/ChessDepositInstructions'
 import TransactionModal from '@/components/Modals/TransactionModal'
 
 interface DashboardProps {
@@ -20,7 +20,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showReferralModal, setShowReferralModal] = useState(false)
-  const [showPayoutModal, setShowPayoutModal] = useState(false)
   const [depositInfo, setDepositInfo] = useState<any | null>(null)
   const [showTransactionModal, setShowTransactionModal] = useState(false)
   const [currentTransactionId, setCurrentTransactionId] = useState<string | null>(null)
@@ -62,7 +61,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       if (raw) {
         const dep = JSON.parse(raw)
         setDepositInfo(dep)
-        setShowPayoutModal(true)
       }
     } catch {}
   }, [])
@@ -84,7 +82,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           const data = await transactionsResponse.json()
           setTransactions(data)
         }
-        setShowPayoutModal(false)
       } else {
         const error = await response.json()
         alert(`Payout failed: ${error.message}`)
@@ -190,7 +187,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   <div className="text-sm text-gray-500">Share your referral code</div>
                 </button>
                 <button 
-                  onClick={() => setShowPayoutModal(true)}
+                  onClick={() => handlePayoutRequest(0, '')}
                   className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-green-50 hover:border-green-300 transition-colors"
                 >
                   <div className="font-medium text-gray-900">Request Payout</div>
@@ -236,35 +233,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           onClose={() => setShowReferralModal(false)}
         />
       )}
-      {showPayoutModal && (
-        <PayoutRequestModal 
-          onClose={() => setShowPayoutModal(false)}
-          onSubmit={handlePayoutRequest}
-          onDepositConfirm={async () => {
-            // Notify backend that user confirmed payment intent
-            try {
-              const response = await fetch('/api/transactions/deposit-confirm', { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transactionId: depositInfo?.transactionId })
-              })
-              
-              if (response.ok) {
-                // Close the deposit modal and show transaction status modal
-                setShowPayoutModal(false)
-                setCurrentTransactionId(depositInfo?.transactionId || depositInfo?.txHash)
-                setShowTransactionModal(true)
-                localStorage.removeItem('pending_deposit')
-              } else {
-                console.error('Failed to confirm deposit')
-                alert('Failed to confirm deposit. Please try again.')
-              }
-            } catch (error) {
-              console.error('Failed to confirm deposit:', error)
-              alert('Network error. Please try again.')
-            }
+      {depositInfo && (
+        <ChessDepositInstructions
+          depositInfo={depositInfo}
+          onModalClose={() => {
+            setDepositInfo(null)
+            localStorage.removeItem('pending_deposit')
           }}
-          deposit={depositInfo || undefined}
         />
       )}
       {showTransactionModal && currentTransactionId && (

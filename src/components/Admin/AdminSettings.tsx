@@ -4,9 +4,10 @@ import React, { useEffect, useState } from 'react'
 
 type Config = {
   id?: string
-  depositWallet: string
-  depositCoin: string
-  depositNetwork: string
+  depositWallet?: string
+  depositCoin?: string
+  depositNetwork?: string
+  [key: string]: any // For other settings
 }
 
 const AdminSettings: React.FC = () => {
@@ -14,7 +15,11 @@ const AdminSettings: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [config, setConfig] = useState<Config>({ depositWallet: '', depositCoin: 'USDT', depositNetwork: 'TRON (TRC20)' })
+  const [config, setConfig] = useState<Config>({
+    depositWallet: '',
+    depositCoin: 'USDT',
+    depositNetwork: 'TRON (TRC20)'
+  })
 
   const load = async () => {
     setLoading(true)
@@ -23,7 +28,7 @@ const AdminSettings: React.FC = () => {
       const res = await fetch('/api/admin/config')
       if (!res.ok) throw new Error('Failed to load settings')
       const data = await res.json()
-      if (data) setConfig(data)
+      setConfig(data)
     } catch (e: any) {
       setError(e.message || 'Failed to load')
     } finally {
@@ -79,7 +84,7 @@ const AdminSettings: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Deposit Wallet Address</label>
             <input
               type="text"
-              value={config.depositWallet}
+              value={config.depositWallet || ''}
               onChange={(e) => setConfig({ ...config, depositWallet: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded"
               placeholder="T... or 0x..."
@@ -90,7 +95,7 @@ const AdminSettings: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Coin</label>
               <input
                 type="text"
-                value={config.depositCoin}
+                value={config.depositCoin || 'USDT'}
                 onChange={(e) => setConfig({ ...config, depositCoin: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded"
                 placeholder="USDT"
@@ -100,11 +105,56 @@ const AdminSettings: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Network</label>
               <input
                 type="text"
-                value={config.depositNetwork}
+                value={config.depositNetwork || 'TRON (TRC20)'}
                 onChange={(e) => setConfig({ ...config, depositNetwork: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded"
                 placeholder="TRON (TRC20)"
               />
+            </div>
+          </div>
+          
+          {/* System Settings */}
+          <div className="pt-4 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">System Settings</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Maintenance Mode</label>
+                  <p className="text-xs text-gray-500">Temporarily disable user access</p>
+                </div>
+                <button
+                  onClick={() => setConfig({ ...config, MAINTENANCE_MODE: !(config.MAINTENANCE_MODE === true) })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${config.MAINTENANCE_MODE === true ? 'bg-red-600' : 'bg-gray-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${config.MAINTENANCE_MODE === true ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Registration Enabled</label>
+                  <p className="text-xs text-gray-500">Allow new user registrations</p>
+                </div>
+                <button
+                  onClick={() => setConfig({ ...config, REGISTRATION_ENABLED: !(config.REGISTRATION_ENABLED === true) })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${config.REGISTRATION_ENABLED === true ? 'bg-green-600' : 'bg-gray-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${config.REGISTRATION_ENABLED === true ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Referral Bonus</label>
+                  <p className="text-xs text-gray-500">Enable referral bonuses</p>
+                </div>
+                <button
+                  onClick={() => setConfig({ ...config, REFERRAL_BONUS_ENABLED: !(config.REFERRAL_BONUS_ENABLED === true) })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${config.REFERRAL_BONUS_ENABLED === true ? 'bg-green-600' : 'bg-gray-200'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${config.REFERRAL_BONUS_ENABLED === true ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
             </div>
           </div>
 

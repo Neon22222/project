@@ -50,7 +50,16 @@ const ChessLoginForm: React.FC<ChessLoginFormProps> = ({ onNavigate }) => {
             type: 'success',
             read: false,
           })
-          onNavigate('dashboard')
+          
+          // Check if there's a pending deposit that needs to be shown
+          const pendingDeposit = localStorage.getItem('pending_deposit')
+          if (pendingDeposit) {
+            // Navigate to deposit instructions page to show the modal
+            onNavigate('deposit-instructions')
+          } else {
+            // No pending deposit, go to dashboard
+            onNavigate('dashboard')
+          }
         }
       }
 

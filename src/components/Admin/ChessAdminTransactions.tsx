@@ -7,13 +7,13 @@ import { DollarSign, TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Sear
 interface Transaction {
   id: string
   userId: string
-  username: string
-  type: 'deposit' | 'payout' | 'referral'
+  user: string
+  type: 'DEPOSIT' | 'PAYOUT' | 'REFERRAL' | 'BONUS' | 'REFUND'
   amount: number
-  status: 'pending' | 'confirmed' | 'rejected' | 'completed'
-  transactionId?: string
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED'
+  txHash?: string
   plan: string
-  walletAddress: string
+  walletAddress?: string
   createdAt: string
   expiresAt?: string
 }
@@ -34,62 +34,22 @@ const ChessAdminTransactions: React.FC = () => {
         const response = await fetch('/api/admin/transactions')
         if (response.ok) {
           const data = await response.json()
-          setTransactions(data.transactions)
+          // Check if data is an array or has a transactions property
+          if (Array.isArray(data)) {
+            setTransactions(data)
+          } else if (data && data.transactions && Array.isArray(data.transactions)) {
+            setTransactions(data.transactions)
+          } else {
+            setTransactions([])
+          }
         } else {
-          // Mock data for demo
-          setTransactions([
-            {
-              id: '1',
-              userId: 'user1',
-              username: 'KingPlayer',
-              type: 'deposit',
-              amount: 100,
-              status: 'pending',
-              transactionId: 'TXN123456',
-              plan: 'King',
-              walletAddress: '0x1234...5678',
-              createdAt: '2024-01-15T10:30:00Z',
-              expiresAt: '2024-01-16T10:30:00Z'
-            },
-            {
-              id: '2',
-              userId: 'user2',
-              username: 'QueenNoble',
-              type: 'payout',
-              amount: 150,
-              status: 'confirmed',
-              transactionId: 'TXN123457',
-              plan: 'Queen',
-              walletAddress: '0x5678...9012',
-              createdAt: '2024-01-14T15:45:00Z'
-            },
-            {
-              id: '3',
-              userId: 'user3',
-              username: 'BishopWarrior',
-              type: 'referral',
-              amount: 15.5,
-              status: 'completed',
-              plan: 'Bishop',
-              walletAddress: '0x9012...3456',
-              createdAt: '2024-01-13T09:20:00Z'
-            },
-            {
-              id: '4',
-              userId: 'user4',
-              username: 'KnightGuard',
-              type: 'deposit',
-              amount: 50,
-              status: 'rejected',
-              transactionId: 'TXN123458',
-              plan: 'Knight',
-              walletAddress: '0x3456...7890',
-              createdAt: '2024-01-12T14:15:00Z'
-            }
-          ])
+          // Handle HTTP errors properly instead of showing mock data
+          console.error('Failed to fetch transactions:', response.status, response.statusText)
+          setTransactions([])
         }
       } catch (error) {
         console.error('Failed to fetch transactions:', error)
+        setTransactions([])
       } finally {
         setLoading(false)
       }
@@ -110,12 +70,12 @@ const ChessAdminTransactions: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed':
-      case 'confirmed':
+      case 'COMPLETED':
+      case 'CONFIRMED':
         return 'bg-green-500/20 text-green-400'
-      case 'pending':
+      case 'PENDING':
         return 'bg-yellow-500/20 text-yellow-400'
-      case 'rejected':
+      case 'REJECTED':
         return 'bg-red-500/20 text-red-400'
       default:
         return 'bg-gray-500/20 text-gray-400'
@@ -124,11 +84,11 @@ const ChessAdminTransactions: React.FC = () => {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'deposit':
+      case 'DEPOSIT':
         return '⬇️'
-      case 'payout':
+      case 'PAYOUT':
         return '⬆️'
-      case 'referral':
+      case 'REFERRAL':
         return '👥'
       default:
         return '💰'
@@ -137,53 +97,61 @@ const ChessAdminTransactions: React.FC = () => {
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'deposit':
+      case 'DEPOSIT':
         return 'Royal Deposit'
-      case 'payout':
+      case 'PAYOUT':
         return 'Treasury Withdrawal'
-      case 'referral':
+      case 'REFERRAL':
         return 'Recruitment Bonus'
       default:
         return 'Transaction'
     }
   }
 
-  const filteredTransactions = transactions.filter(transaction => {
-    const matchesSearch = transaction.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transaction.transactionId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         transaction.walletAddress.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredTransactions = transactions ? transactions.filter(transaction => {
+    const matchesSearch = (transaction.user?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         transaction.txHash?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         transaction.walletAddress?.toLowerCase().includes(searchTerm.toLowerCase())) ?? false
     const matchesType = filterType === 'all' || transaction.type === filterType
     const matchesStatus = filterStatus === 'all' || transaction.status === filterStatus
     
     return matchesSearch && matchesType && matchesStatus
-  })
+  }) : []
 
   const handleTransactionAction = async (transactionId: string, action: 'approve' | 'reject') => {
     try {
       const response = await fetch(`/api/admin/transactions/${transactionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ 
+          status: action === 'approve' ? 'CONFIRMED' : 'REJECTED' 
+        })
       })
       
       if (response.ok) {
         // Update transaction status in local state
         setTransactions(transactions.map(transaction => 
           transaction.id === transactionId 
-            ? { ...transaction, status: action === 'approve' ? 'confirmed' : 'rejected' }
+            ? { ...transaction, status: action === 'approve' ? 'CONFIRMED' : 'REJECTED' }
             : transaction
         ))
+      } else {
+        // Handle HTTP errors
+        const errorData = await response.json()
+        console.error('Failed to update transaction:', errorData)
+        alert(`Failed to ${action} transaction: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Failed to update transaction:', error)
+      alert(`Network error. Failed to ${action} transaction. Please try again.`)
     }
   }
 
   const totalAmounts = {
-    deposits: transactions.filter(t => t.type === 'deposit').reduce((sum, t) => sum + t.amount, 0),
-    payouts: transactions.filter(t => t.type === 'payout').reduce((sum, t) => sum + t.amount, 0),
-    referrals: transactions.filter(t => t.type === 'referral').reduce((sum, t) => sum + t.amount, 0),
-    pending: transactions.filter(t => t.status === 'pending').length
+    deposits: transactions ? transactions.filter(t => t.type === 'DEPOSIT').reduce((sum, t) => sum + t.amount, 0) : 0,
+    payouts: transactions ? transactions.filter(t => t.type === 'PAYOUT').reduce((sum, t) => sum + t.amount, 0) : 0,
+    referrals: transactions ? transactions.filter(t => t.type === 'REFERRAL').reduce((sum, t) => sum + t.amount, 0) : 0,
+    pending: transactions ? transactions.filter(t => t.status === 'PENDING').length : 0
   }
 
   if (loading) {
@@ -239,7 +207,7 @@ const ChessAdminTransactions: React.FC = () => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
               >
-                <p className="text-2xl font-bold text-white">{transactions.length}</p>
+                <p className="text-2xl font-bold text-white">{transactions ? transactions.length : 0}</p>
                 <p className="text-sm text-gray-400">Total Transactions</p>
               </motion.div>
             </div>
@@ -334,9 +302,9 @@ const ChessAdminTransactions: React.FC = () => {
                 className="royal-input w-full"
               >
                 <option value="all">All Types</option>
-                <option value="deposit">Deposits ⬇️</option>
-                <option value="payout">Payouts ⬆️</option>
-                <option value="referral">Referrals 👥</option>
+                <option value="DEPOSIT">Deposits ⬇️</option>
+                <option value="PAYOUT">Payouts ⬆️</option>
+                <option value="REFERRAL">Referrals 👥</option>
               </select>
               
               <select
@@ -345,10 +313,10 @@ const ChessAdminTransactions: React.FC = () => {
                 className="royal-input w-full"
               >
                 <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
+                <option value="PENDING">Pending</option>
+                <option value="CONFIRMED">Confirmed</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="REJECTED">Rejected</option>
               </select>
             </div>
             
@@ -389,7 +357,7 @@ const ChessAdminTransactions: React.FC = () => {
                     >
                       <td className="p-4">
                         <div>
-                          <p className="font-bold text-white text-sm">{transaction.transactionId || 'Internal'}</p>
+                          <p className="font-bold text-white text-sm">{transaction.txHash || 'Internal'}</p>
                           <p className="text-xs text-gray-400">{transaction.walletAddress}</p>
                         </div>
                       </td>
@@ -404,7 +372,7 @@ const ChessAdminTransactions: React.FC = () => {
                             {getPlanPiece(transaction.plan)}
                           </motion.div>
                           <div>
-                            <p className="font-bold text-white">{transaction.username}</p>
+                            <p className="font-bold text-white">{transaction.user}</p>
                             <p className="text-xs text-gray-400">{transaction.plan} Plan</p>
                           </div>
                         </div>
@@ -419,7 +387,7 @@ const ChessAdminTransactions: React.FC = () => {
                       
                       <td className="p-4">
                         <p className="text-white font-bold">
-                          {transaction.type === 'payout' ? '-' : '+'}{transaction.amount} USDT
+                          {transaction.type === 'PAYOUT' ? '-' : '+'}{transaction.amount} USDT
                         </p>
                       </td>
                       
@@ -455,7 +423,7 @@ const ChessAdminTransactions: React.FC = () => {
                             <Eye className="w-4 h-4" />
                           </motion.button>
                           
-                          {transaction.status === 'pending' && (
+                          {transaction.status === 'PENDING' && (
                             <>
                               <motion.button
                                 onClick={() => handleTransactionAction(transaction.id, 'approve')}
@@ -545,7 +513,7 @@ const ChessAdminTransactions: React.FC = () => {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-400">ID:</span>
-                        <span className="text-white">{selectedTransaction.transactionId || 'Internal'}</span>
+                        <span className="text-white">{selectedTransaction.id || 'Internal'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Type:</span>
@@ -590,7 +558,7 @@ const ChessAdminTransactions: React.FC = () => {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-400">Username:</span>
-                        <span className="text-white">{selectedTransaction.username}</span>
+                        <span className="text-white">{selectedTransaction.user}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Plan:</span>
@@ -616,7 +584,7 @@ const ChessAdminTransactions: React.FC = () => {
               </div>
 
               <div className="mt-6 flex justify-center space-x-3">
-                {selectedTransaction.status === 'pending' && (
+                {selectedTransaction.status === 'PENDING' && (
                   <>
                     <motion.button
                       onClick={() => {

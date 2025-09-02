@@ -27,7 +27,10 @@ export async function POST(request: NextRequest) {
       where: { username }
     })
 
+    console.log('User lookup result:', user ? 'Found' : 'Not found', user?.id)
+
     if (!user) {
+      console.log('User not found in database for username:', username)
       return NextResponse.json(
         { error: 'Invalid username or password' },
         { status: 401 }
@@ -43,7 +46,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify password
+    console.log('Comparing passwords...')
     const isPasswordValid = await bcrypt.compare(password, user.password)
+    console.log('Password comparison result:', isPasswordValid)
 
     if (!isPasswordValid) {
       // Increment login attempts
@@ -58,6 +63,7 @@ export async function POST(request: NextRequest) {
         }
       })
 
+      console.log('Invalid password for user:', username, 'attempts:', attempts)
       return NextResponse.json(
         { error: 'Invalid username or password' },
         { status: 401 }
