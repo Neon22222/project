@@ -19,6 +19,7 @@ model User {
   plan          PlanType
   trianglePosition Int?
   triangleId    String?  @db.ObjectId
+  trianglePositions Position[] @relation(name: "UserToPositions")
   referralCode  String   @unique
   uplineId      String?  @db.ObjectId
   upline        User?    @relation("UserReferrals", fields: [uplineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -44,7 +45,7 @@ model User {
 model Triangle {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   planType        PlanType
-  positions       Json      // Array of user IDs or null for empty positions
+  userPositions   Json      // Array of user IDs or null for empty positions
   completedAt     DateTime?
   payoutProcessed Boolean   @default(false)
   createdAt       DateTime  @default(now())
@@ -52,6 +53,7 @@ model Triangle {
 
   // Relations
   users User[]
+  trianglePositions Position[] @relation(name: "PositionToTriangle")
 
   @@map("triangles")
 }
@@ -148,4 +150,16 @@ enum NotificationType {
   WARNING
   ERROR
   INFO
+}
+
+// Add Position model if it doesn't exist
+model Position {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  triangleId String  @db.ObjectId
+  position  Int
+  user      User     @relation(fields: [userId], references: [id], name: "UserToPositions")
+  triangle  Triangle @relation(fields: [triangleId], references: [id], name: "PositionToTriangle")
+
+  @@map("positions")
 }

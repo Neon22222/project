@@ -85,14 +85,8 @@ export async function GET(request: NextRequest) {
         createdAt: true,
         isActive: true,
         loginAttempts: true,
-        // Include triangle position if user is in a triangle
-        trianglePositions: {
-          select: {
-            position: true,
-            triangleId: true
-          },
-          take: 1
-        }
+        trianglePosition: true,
+        triangleId: true
       }
     })
     
@@ -102,8 +96,8 @@ export async function GET(request: NextRequest) {
       username: user.username,
       walletAddress: user.walletAddress,
       plan: user.plan,
-      trianglePosition: user.trianglePositions[0]?.position || undefined,
-      triangleId: user.trianglePositions[0]?.triangleId || undefined,
+      trianglePosition: user.trianglePosition,
+      triangleId: user.triangleId,
       referralCode: user.referralCode,
       balance: user.balance,
       totalEarned: user.totalEarned,

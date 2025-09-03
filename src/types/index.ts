@@ -5,11 +5,21 @@ export interface User {
   plan: PlanType
   trianglePosition?: number
   triangleId?: string
+  trianglePositions?: Position[]
   referralCode: string
   uplineId?: string
   balance: number
   totalEarned: number
   createdAt: Date
+}
+
+export interface Position {
+  id: string
+  userId: string
+  triangleId: string
+  position: number
+  user?: User
+  triangle?: Triangle
 }
 
 export interface Triangle {
