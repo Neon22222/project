@@ -5,6 +5,34 @@ import crypto from 'crypto'
 
 const prisma = new PrismaClient()
 
+// Function to generate a short, unique referral code
+async function generateReferralCode(username: string): Promise<string> {
+  // Generate a random 6-character alphanumeric code
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  
+  // Combine with first 3 letters of username (if available)
+  const usernamePrefix = username.substring(0, 3).toUpperCase();
+  const referralCode = `${usernamePrefix}${result}`;
+  
+  // Check if this code already exists
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      referralCode: referralCode
+    }
+  });
+  
+  // If it exists, generate a new one
+  if (existingUser) {
+    return generateReferralCode(username);
+  }
+  
+  return referralCode;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -71,7 +99,7 @@ export async function POST(request: NextRequest) {
     console.log('Password hashed successfully for user:', username)
 
     // Generate unique referral code
-    const referralCode = `${username.toUpperCase()}_${Date.now()}`
+    const referralCode = await generateReferralCode(username);
 
     // Get plan details
     const plan = await prisma.plan.findUnique({

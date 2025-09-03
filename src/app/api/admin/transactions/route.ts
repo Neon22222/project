@@ -130,6 +130,63 @@ export async function PATCH(
       data: { status }
     })
     
+    // NEW: If transaction is confirmed and it's a deposit, assign user to triangle
+    if (status === 'CONFIRMED' && updatedTransaction.type === 'DEPOSIT') {
+      try {
+        // Call the triangle assignment API
+        const assignResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/triangle/assign`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': request.headers.get('cookie') || ''
+          },
+          body: JSON.stringify({ userId: updatedTransaction.userId })
+        })
+        
+        if (!assignResponse.ok) {
+          console.error('Failed to assign user to triangle:', await assignResponse.text())
+        }
+      } catch (assignError) {
+        console.error('Error assigning user to triangle:', assignError)
+      }
+      
+      // Process referral bonus if user has an upline
+      const user = await prisma.user.findUnique({
+        where: { id: updatedTransaction.userId },
+        include: { upline: true }
+      })
+      
+      if (user && user.uplineId) {
+        // Get plan details for referral bonus amount
+        const plan = await prisma.plan.findUnique({
+          where: { name: user.plan }
+        })
+        
+        if (plan) {
+          // Create referral bonus transaction
+          await prisma.transaction.create({
+            data: {
+              userId: user.uplineId,
+              type: 'REFERRAL',
+              amount: plan.referralBonus,
+              status: 'CONFIRMED',
+              transactionId: `RB${Date.now()}`
+            }
+          })
+          
+          // Update upline's balance
+          await prisma.user.update({
+            where: { id: user.uplineId },
+            data: {
+              balance: {
+                increment: plan.referralBonus
+              }
+            }
+          })
+        }
+      }
+    }
+    
     // If transaction is completed and it's a payout, update user balance
     if (status === 'COMPLETED' && updatedTransaction.type === 'PAYOUT') {
       const user = await prisma.user.findUnique({
