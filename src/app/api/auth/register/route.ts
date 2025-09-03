@@ -2,35 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
+import { findReferrer } from '@/lib/triangle'
 
 const prisma = new PrismaClient()
 
 // Function to generate a short, unique referral code
 async function generateReferralCode(username: string): Promise<string> {
-  // Generate a random 6-character alphanumeric code
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
   for (let i = 0; i < 6; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
+    result += characters.charAt(Math.floor(Math.random() * characters.length))
   }
   
-  // Combine with first 3 letters of username (if available)
-  const usernamePrefix = username.substring(0, 3).toUpperCase();
-  const referralCode = `${usernamePrefix}${result}`;
+  const usernamePrefix = username.substring(0, 3).toUpperCase()
+  const referralCode = `${usernamePrefix}${result}`
   
   // Check if this code already exists
   const existingUser = await prisma.user.findFirst({
-    where: {
-      referralCode: referralCode
-    }
-  });
+    where: { referralCode: referralCode }
+  })
   
-  // If it exists, generate a new one
   if (existingUser) {
-    return generateReferralCode(username);
+    return generateReferralCode(username)
   }
   
-  return referralCode;
+  return referralCode
 }
 
 export async function POST(request: NextRequest) {
@@ -77,19 +73,15 @@ export async function POST(request: NextRequest) {
 
     // Find upline user if referrer ID is provided
     let uplineId = null
+    let finalPlanType = planType
+
     if (referrerId) {
-      const upline = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { id: referrerId },
-            { username: referrerId },
-            { referralCode: referrerId }
-          ]
-        }
-      })
+      const upline = await findReferrer(referrerId)
       
       if (upline) {
         uplineId = upline.id
+        // Automatically set plan to match referrer's plan
+        finalPlanType = upline.plan
       }
     }
 
@@ -99,11 +91,11 @@ export async function POST(request: NextRequest) {
     console.log('Password hashed successfully for user:', username)
 
     // Generate unique referral code
-    const referralCode = await generateReferralCode(username);
+    const referralCode = await generateReferralCode(username)
 
     // Get plan details
     const plan = await prisma.plan.findUnique({
-      where: { name: planType }
+      where: { name: finalPlanType as any }
     })
 
     if (!plan) {
@@ -123,13 +115,14 @@ export async function POST(request: NextRequest) {
         email,
         password: hashedPassword,
         walletAddress,
-        plan: planType,
+        plan: finalPlanType as any,
         referralCode,
         uplineId,
         balance: 0,
         totalEarned: 0,
         isAdmin: false,
         isActive: true,
+        status: 'PENDING',
         loginAttempts: 0
       }
     })
@@ -138,7 +131,7 @@ export async function POST(request: NextRequest) {
 
     // Generate deposit information
     const depositInfo = {
-      transactionId: `DEP_${crypto.randomBytes(16).toString('hex')}`,
+      transactionId: `DP${Date.now()}`,
       amount: plan.price,
       coin: 'USDT',
       network: 'TRC20',
@@ -147,7 +140,7 @@ export async function POST(request: NextRequest) {
       positionKey: newUser.referralCode
     }
 
-    // Create pending transaction
+    // Create pending deposit transaction
     await prisma.transaction.create({
       data: {
         userId: newUser.id,
@@ -155,7 +148,7 @@ export async function POST(request: NextRequest) {
         amount: plan.price,
         status: 'PENDING',
         transactionId: depositInfo.transactionId,
-        description: `Initial deposit for ${planType} plan`,
+        description: `Initial deposit for ${finalPlanType} plan`,
         metadata: depositInfo
       }
     })

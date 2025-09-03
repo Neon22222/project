@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import jwt from 'jsonwebtoken'
 
+const prisma = new PrismaClient()
+
 // Helper function to verify user authentication
 async function verifyUser(request: NextRequest) {
   try {
@@ -11,7 +13,6 @@ async function verifyUser(request: NextRequest) {
       return null
     }
     
-    // Verify and decode the session token
     const decoded = jwt.verify(
       sessionToken,
       process.env.NEXTAUTH_SECRET || 'fallback-secret'
@@ -28,12 +29,8 @@ async function verifyUser(request: NextRequest) {
   }
 }
 
-const prisma = new PrismaClient()
-
-// GET /api/user/wallet - Get user's wallet data
 export async function GET(request: NextRequest) {
   try {
-    // Verify user authentication
     const user = await verifyUser(request)
     if (!user) {
       return NextResponse.json(
@@ -42,9 +39,25 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    // Fetch user with wallet and transaction information
-    const userData: any = await prisma.user.findUnique({
-      where: { id: user.id }
+    // Fetch user with complete data
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        trianglePosition: {
+          include: {
+            triangle: {
+              include: {
+                positions: {
+                  where: { userId: { not: null } }
+                }
+              }
+            }
+          }
+        },
+        transactions: {
+          orderBy: { createdAt: 'desc' }
+        }
+      }
     })
     
     if (!userData) {
@@ -54,87 +67,49 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    // Fetch user's transactions
-    const userTransactions: any = await prisma.transaction.findMany({
-      where: {
-        userId: user.id
-      }
-    })
-    
-    // Fetch user's triangle positions
-    const userTrianglePositions: any = await (prisma as any).position.findMany({
-      where: {
-        userId: user.id
-      },
-      include: {
-        triangle: true
-      }
-    })
-    
     // Calculate wallet statistics
     const balance = userData.balance
     const totalEarned = userData.totalEarned
     
-    // Calculate pending earnings from triangle positions
-    let pendingEarnings = 0
-    let referralBonus = 0
+    // Calculate referral bonus from transactions
+    const referralBonus = userData.transactions
+      .filter(tx => tx.type === 'REFERRAL_BONUS' && tx.status === 'CONFIRMED')
+      .reduce((sum, tx) => sum + tx.amount, 0)
+    
+    // Calculate plan earnings (total earned minus referral bonus)
+    const planEarnings = totalEarned - referralBonus
+    
+    // Get position info
     let positionInfo = null
-    
-    // Get referral bonus from transactions
-    const referralTransactions = userTransactions.filter((tx: any) => tx.type === 'REFERRAL')
-    referralBonus = referralTransactions.reduce((sum: number, tx: any) => sum + tx.amount, 0)
-    
-    // Get the most recent triangle position if exists
-    if (userTrianglePositions && userTrianglePositions.length > 0) {
-      const currentPosition = userTrianglePositions[0]
-      const triangle = currentPosition.triangle
-      
-      // Calculate filled positions in the triangle
-      const filledPositions = await (prisma as any).position.count({
-        where: {
-          triangleId: triangle.id,
-          userId: {
-            not: null
-          }
-        }
-      })
-      
-      // Get plan details for payout calculation
-      const plan = await prisma.plan.findUnique({
-        where: { name: triangle.planType }
-      })
-      
-      const expectedPayout = plan ? plan.payout : 0
+    if (userData.trianglePosition) {
+      const triangle = userData.trianglePosition.triangle
+      const filledPositions = triangle.positions.length
       
       positionInfo = {
-        positionKey: String.fromCharCode(65 + currentPosition.position),
-        triangleComplete: !!triangle.completedAt,
-        earnedFromPosition: triangle.completedAt ? expectedPayout : 0,
+        positionKey: userData.trianglePosition.positionKey,
+        triangleComplete: triangle.isComplete,
+        earnedFromPosition: planEarnings,
         filledPositions: filledPositions
-      }
-      
-      // If triangle is complete but user hasn't claimed payout yet, add to pending
-      if (triangle.completedAt && !triangle.payoutProcessed) {
-        pendingEarnings += expectedPayout
       }
     }
     
     // Transform transaction history for frontend
-    const transactionHistory = userTransactions.map((tx: any) => ({
+    const transactionHistory = userData.transactions.map(tx => ({
       id: tx.id,
-      type: tx.type.toLowerCase(),
+      type: tx.type,
       amount: tx.amount,
-      status: tx.status.toLowerCase(),
+      status: tx.status,
       transactionId: tx.transactionId || undefined,
-      date: tx.createdAt.toISOString().split('T')[0]
+      date: tx.createdAt.toISOString().split('T')[0],
+      description: tx.description
     }))
     
-    // Transform data for frontend
     const responseData = {
       balance,
-      pendingEarnings,
+      pendingEarnings: 0, // Calculate if needed
       totalEarned,
       referralBonus,
+      planEarnings,
       positionInfo,
       history: transactionHistory
     }

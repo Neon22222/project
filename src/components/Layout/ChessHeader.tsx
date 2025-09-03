@@ -28,6 +28,7 @@ const ChessHeader: React.FC<ChessHeaderProps> = ({ onNavigate, currentPage }) =>
     { id: 'admin-dashboard', label: 'Command Center', icon: Crown },
     { id: 'admin-users', label: 'Knights', icon: Shield },
     { id: 'admin-transactions', label: 'Treasury', icon: Sword },
+    { id: 'admin-triangles', label: 'Formations', icon: Castle },
     { id: 'admin-plans', label: 'Kingdoms', icon: Castle },
     { id: 'admin-settings', label: 'Royal Decree', icon: Crown },
   ] : [

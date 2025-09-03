@@ -13,7 +13,6 @@ async function verifyAdmin(request: NextRequest) {
       return null
     }
     
-    // Verify and decode the session token
     const decoded = jwt.verify(
       sessionToken,
       process.env.NEXTAUTH_SECRET || 'fallback-secret'
@@ -30,9 +29,7 @@ async function verifyAdmin(request: NextRequest) {
   }
 }
 
-// GET /api/admin/users - Get all users
 export async function GET(request: NextRequest) {
-  // Verify admin status
   const adminUser = await verifyAdmin(request)
   if (!adminUser) {
     return NextResponse.json(
@@ -42,14 +39,16 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // Get query parameters for filtering
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
     const plan = searchParams.get('plan') || 'all'
     const status = searchParams.get('status') || 'all'
     
-    // Build where clause
-    const where: any = {}
+    // Build where clause - exclude deleted users
+    const where: any = {
+      deletedAt: null,
+      isAdmin: false // Exclude admin users from the list
+    }
     
     // Add search filter
     if (search) {
@@ -64,127 +63,69 @@ export async function GET(request: NextRequest) {
     if (plan && plan !== 'all') {
       where.plan = plan
     }
+
+    // Add status filter
+    if (status && status !== 'all') {
+      if (status === 'active') {
+        where.status = 'CONFIRMED'
+        where.isActive = true
+      } else if (status === 'pending') {
+        where.status = 'PENDING'
+      } else if (status === 'suspended') {
+        where.isActive = false
+      }
+    }
     
-    // Add status filter (we'll need to determine this based on user properties)
-    // For now, we'll just fetch all users and filter on the client side if needed
-    
-    // Fetch users
+    // Fetch users with triangle position info
     const users = await prisma.user.findMany({
       where,
-      orderBy: {
-        createdAt: 'desc'
+      include: {
+        trianglePosition: {
+          include: {
+            triangle: true
+          }
+        },
+        downlines: true,
+        transactions: {
+          where: { type: 'REFERRAL_BONUS' }
+        }
       },
-      select: {
-        id: true,
-        username: true,
-        walletAddress: true,
-        plan: true,
-        referralCode: true,
-        balance: true,
-        totalEarned: true,
-        createdAt: true,
-        isActive: true,
-        loginAttempts: true,
-        trianglePosition: true,
-        triangleId: true
-      }
+      orderBy: { createdAt: 'desc' }
     })
     
     // Transform data for frontend
-    const formattedUsers = users.map(user => ({
-      id: user.id,
-      username: user.username,
-      walletAddress: user.walletAddress,
-      plan: user.plan,
-      trianglePosition: user.trianglePosition,
-      triangleId: user.triangleId,
-      referralCode: user.referralCode,
-      balance: user.balance,
-      totalEarned: user.totalEarned,
-      createdAt: user.createdAt.toISOString(),
-      status: user.isActive ? (user.loginAttempts >= 5 ? 'suspended' : 'active') : 'pending'
-    }))
+    const formattedUsers = users.map(user => {
+      const referralBonus = user.transactions
+        .filter(tx => tx.type === 'REFERRAL_BONUS')
+        .reduce((sum, tx) => sum + tx.amount, 0)
+
+      return {
+        id: user.id,
+        username: user.username,
+        walletAddress: user.walletAddress,
+        plan: user.plan,
+        trianglePosition: user.trianglePosition?.positionKey || null,
+        triangleId: user.trianglePosition?.triangleId || null,
+        triangleComplete: user.trianglePosition?.triangle?.isComplete || false,
+        filledPositions: 0, // Will be calculated if needed
+        referralCode: user.referralCode,
+        balance: user.balance,
+        totalEarned: user.totalEarned,
+        planEarnings: user.totalEarned - referralBonus,
+        referralBonus: referralBonus,
+        referralCount: user.downlines.length,
+        createdAt: user.createdAt.toISOString(),
+        status: user.status,
+        isActive: user.isActive,
+        isAdmin: user.isAdmin
+      }
+    })
     
-    return NextResponse.json({ users: formattedUsers })
+    return NextResponse.json(formattedUsers)
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json(
       { error: 'Failed to fetch users' },
-      { status: 500 }
-    )
-  } finally {
-    await prisma.$disconnect()
-  }
-}
-
-// PATCH /api/admin/users/:id - Update user status
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  // Verify admin status
-  const adminUser = await verifyAdmin(request)
-  if (!adminUser) {
-    return NextResponse.json(
-      { error: 'Unauthorized - Admin access required' },
-      { status: 401 }
-    )
-  }
-  
-  try {
-    const { id } = params
-    const body = await request.json()
-    const { action } = body
-    
-    // Validate action
-    const validActions = ['suspend', 'activate', 'delete']
-    if (!validActions.includes(action)) {
-      return NextResponse.json(
-        { error: 'Invalid action' },
-        { status: 400 }
-      )
-    }
-    
-    let updatedUser
-    
-    switch (action) {
-      case 'suspend':
-        updatedUser = await prisma.user.update({
-          where: { id },
-          data: { 
-            isActive: false,
-            loginAttempts: 5 // Set to max to indicate suspension
-          }
-        })
-        break
-        
-      case 'activate':
-        updatedUser = await prisma.user.update({
-          where: { id },
-          data: { 
-            isActive: true,
-            loginAttempts: 0 // Reset login attempts
-          }
-        })
-        break
-        
-      case 'delete':
-        // Soft delete - mark as inactive
-        updatedUser = await prisma.user.update({
-          where: { id },
-          data: { 
-            isActive: false,
-            loginAttempts: 5
-          }
-        })
-        break
-    }
-    
-    return NextResponse.json(updatedUser)
-  } catch (error) {
-    console.error('Error updating user:', error)
-    return NextResponse.json(
-      { error: 'Failed to update user' },
       { status: 500 }
     )
   } finally {

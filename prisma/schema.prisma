@@ -15,11 +15,8 @@ model User {
   username      String   @unique
   email         String?  @unique
   password      String
-  walletAddress String?
+  walletAddress String   @unique
   plan          PlanType
-  trianglePosition Int?
-  triangleId    String?  @db.ObjectId
-  trianglePositions Position[] @relation(name: "UserToPositions")
   referralCode  String   @unique
   uplineId      String?  @db.ObjectId
   upline        User?    @relation("UserReferrals", fields: [uplineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -28,16 +25,19 @@ model User {
   totalEarned   Float    @default(0)
   isAdmin       Boolean  @default(false)
   isActive      Boolean  @default(true)
+  status        UserStatus @default(PENDING)
   loginAttempts Int      @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   deletedAt     DateTime?
 
-  // Relations
+  // Triangle relations
+  trianglePosition TrianglePosition?
+  
+  // Transaction relations
   transactions  Transaction[]
   notifications Notification[]
-  triangle      Triangle?     @relation(fields: [triangleId], references: [id])
 
   @@map("users")
 }
@@ -45,17 +45,35 @@ model User {
 model Triangle {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   planType        PlanType
-  userPositions   Json      // Array of user IDs or null for empty positions
+  isComplete      Boolean   @default(false)
   completedAt     DateTime?
   payoutProcessed Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  // Relations
-  users User[]
-  trianglePositions Position[] @relation(name: "PositionToTriangle")
+  // Triangle positions (15 total)
+  positions       TrianglePosition[]
 
   @@map("triangles")
+}
+
+model TrianglePosition {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  triangleId String   @db.ObjectId
+  userId     String?  @db.ObjectId
+  level      Int      // 1, 2, 3, 4
+  position   Int      // Position within level (0-based)
+  positionKey String  // A, AB1, AB2, B1C1, etc.
+  
+  triangle   Triangle @relation(fields: [triangleId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([triangleId, level, position])
+  @@unique([userId]) // Each user can only have one active position
+  @@map("triangle_positions")
 }
 
 model Transaction {
@@ -67,6 +85,7 @@ model Transaction {
   transactionId String?           @unique // External transaction ID
   description   String?
   metadata      Json?             // Additional transaction data
+  rejectionReason String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   expiresAt     DateTime?
@@ -128,12 +147,16 @@ enum PlanType {
   Knight
 }
 
+enum UserStatus {
+  PENDING    // Initial registration state
+  CONFIRMED  // After admin confirms deposit
+}
+
 enum TransactionType {
   DEPOSIT
   PAYOUT
-  REFERRAL
-  BONUS
-  REFUND
+  REFERRAL_BONUS
+  WITHDRAWAL
 }
 
 enum TransactionStatus {
@@ -141,8 +164,7 @@ enum TransactionStatus {
   CONFIRMED
   REJECTED
   COMPLETED
-  EXPIRED
-  CANCELLED
+  CONSOLIDATED
 }
 
 enum NotificationType {
@@ -150,16 +172,4 @@ enum NotificationType {
   WARNING
   ERROR
   INFO
-}
-
-// Add Position model if it doesn't exist
-model Position {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
-  triangleId String  @db.ObjectId
-  position  Int
-  user      User     @relation(fields: [userId], references: [id], name: "UserToPositions")
-  triangle  Triangle @relation(fields: [triangleId], references: [id], name: "PositionToTriangle")
-
-  @@map("positions")
 }

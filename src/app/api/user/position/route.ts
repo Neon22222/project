@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import jwt from 'jsonwebtoken'
+import { getUserTriangleInfo } from '@/lib/triangle'
+
+const prisma = new PrismaClient()
 
 // Helper function to verify user authentication
 async function verifyUser(request: NextRequest) {
@@ -11,7 +14,6 @@ async function verifyUser(request: NextRequest) {
       return null
     }
     
-    // Verify and decode the session token
     const decoded = jwt.verify(
       sessionToken,
       process.env.NEXTAUTH_SECRET || 'fallback-secret'
@@ -28,12 +30,8 @@ async function verifyUser(request: NextRequest) {
   }
 }
 
-const prisma = new PrismaClient()
-
-// GET /api/user/position - Get user's triangle position
 export async function GET(request: NextRequest) {
   try {
-    // Verify user authentication
     const user = await verifyUser(request)
     if (!user) {
       return NextResponse.json(
@@ -42,87 +40,35 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    // Fetch user with triangle position information
-    const userData: any = await prisma.user.findUnique({
-      where: { id: user.id }
-    })
+    const triangleInfo = await getUserTriangleInfo(user.id)
     
-    if (!userData) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
-    }
-    
-    // Fetch user's triangle positions separately
-    const userTrianglePositions: any = await (prisma as any).position.findMany({
-      where: {
-        userId: user.id
-      },
-      include: {
-        triangle: true
-      }
-    })
-    
-    // Check if user has any triangle positions
-    if (!userTrianglePositions || userTrianglePositions.length === 0) {
+    if (!triangleInfo) {
       return NextResponse.json(
         { error: 'User has not joined any triangle yet' },
         { status: 404 }
       )
     }
-    
-    // Get the most recent triangle position
-    const currentPosition = userTrianglePositions[0]
-    const triangle = currentPosition.triangle
-    
-    // Calculate completion percentage (assuming 15 positions per triangle)
-    const filledPositions = await (prisma as any).position.count({
-      where: {
-        triangleId: triangle.id,
-        userId: {
-          not: null
-        }
-      }
-    })
-    
-    const completion = (filledPositions / 15) * 100
-    
-    // Map positions to frontend format
-    const positions = Array(15).fill(null)
-    const trianglePositions: any = await (prisma as any).position.findMany({
-      where: {
-        triangleId: triangle.id
-      },
-      include: {
-        user: {
-          select: {
-            username: true,
-            plan: true
-          }
-        }
-      }
-    })
-    
-    trianglePositions.forEach((pos: any) => {
-      positions[pos.position] = {
-        id: pos.id,
-        positionKey: String.fromCharCode(65 + pos.position), // A, B, C, etc.
-        username: pos.user?.username || null,
-        planType: pos.user?.plan || null
-      }
-    })
-    
-    // Transform data for frontend
+
+    // Transform positions for frontend
+    const positions = triangleInfo.triangle.positions.map(pos => ({
+      id: pos.id,
+      positionKey: pos.positionKey,
+      username: pos.user?.username || null,
+      planType: pos.user?.plan || null,
+      level: pos.level,
+      position: pos.position
+    }))
+
     const responseData = {
       triangle: {
-        id: triangle.id,
-        planType: triangle.planType,
-        isComplete: !!triangle.completedAt,
+        id: triangleInfo.triangle.id,
+        planType: triangleInfo.triangle.planType,
+        isComplete: triangleInfo.triangle.isComplete,
         positions
       },
-      positionKey: String.fromCharCode(65 + currentPosition.position),
-      completion: completion
+      positionKey: triangleInfo.userPosition.positionKey,
+      completion: triangleInfo.completion,
+      filledPositions: triangleInfo.filledPositions
     }
     
     return NextResponse.json(responseData)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import jwt from 'jsonwebtoken'
+import { assignUserToTriangle } from '@/lib/triangle'
 
 const prisma = new PrismaClient()
 
@@ -13,7 +14,6 @@ async function verifyAdmin(request: NextRequest) {
       return null
     }
     
-    // Verify and decode the session token
     const decoded = jwt.verify(
       sessionToken,
       process.env.NEXTAUTH_SECRET || 'fallback-secret'
@@ -30,12 +30,10 @@ async function verifyAdmin(request: NextRequest) {
   }
 }
 
-// PATCH /api/admin/transactions/:id - Update transaction status
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Verify admin status
   const adminUser = await verifyAdmin(request)
   if (!adminUser) {
     return NextResponse.json(
@@ -45,11 +43,10 @@ export async function PATCH(
   }
   
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
-    const { status } = body
+    const { status, rejectionReason } = body
     
-    // Validate status
     const validStatuses = ['PENDING', 'CONFIRMED', 'REJECTED', 'COMPLETED', 'CONSOLIDATED']
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
@@ -58,106 +55,122 @@ export async function PATCH(
       )
     }
     
+    // Get the transaction first
+    const transaction = await prisma.transaction.findUnique({
+      where: { id },
+      include: { user: true }
+    })
+
+    if (!transaction) {
+      return NextResponse.json(
+        { error: 'Transaction not found' },
+        { status: 404 }
+      )
+    }
+
     // Update transaction
+    const updateData: any = { 
+      status,
+      updatedAt: new Date()
+    }
+
+    if (status === 'CONFIRMED') {
+      updateData.confirmedAt = new Date()
+    } else if (status === 'REJECTED') {
+      updateData.rejectedAt = new Date()
+      if (rejectionReason) {
+        updateData.rejectionReason = rejectionReason
+      }
+    }
+
     const updatedTransaction = await prisma.transaction.update({
       where: { id },
-      data: { status }
+      data: updateData
     })
     
-    // NEW: If transaction is confirmed and it's a deposit, assign user to triangle
-    if (status === 'CONFIRMED' && updatedTransaction.type === 'DEPOSIT') {
+    // Handle deposit confirmation
+    if (status === 'CONFIRMED' && transaction.type === 'DEPOSIT') {
+      // Update user status to CONFIRMED
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: { status: 'CONFIRMED' }
+      })
+
+      // Assign user to triangle
       try {
-        // Call the triangle assignment API
-        const assignResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/triangle/assign`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cookie': request.headers.get('cookie') || ''
-          },
-          body: JSON.stringify({ userId: updatedTransaction.userId })
-        })
-        
-        if (!assignResponse.ok) {
-          console.error('Failed to assign user to triangle:', await assignResponse.text())
-        }
+        await assignUserToTriangle(transaction.userId, transaction.user.uplineId || undefined)
+        console.log('User assigned to triangle successfully')
       } catch (assignError) {
-        console.error('Error assigning user to triangle:', assignError)
+        console.error('Failed to assign user to triangle:', assignError)
       }
       
       // Process referral bonus if user has an upline
-      const user = await prisma.user.findUnique({
-        where: { id: updatedTransaction.userId },
-        include: { upline: true }
-      })
-      
-      if (user && user.uplineId) {
-        // Get plan details for referral bonus amount
+      if (transaction.user.uplineId) {
         const plan = await prisma.plan.findUnique({
-          where: { name: user.plan }
+          where: { name: transaction.user.plan }
         })
         
         if (plan) {
           // Create referral bonus transaction
           await prisma.transaction.create({
             data: {
-              userId: user.uplineId,
-              type: 'REFERRAL',
+              userId: transaction.user.uplineId,
+              type: 'REFERRAL_BONUS',
               amount: plan.referralBonus,
               status: 'CONFIRMED',
-              transactionId: `RB${Date.now()}`
+              transactionId: `RB${Date.now()}`,
+              description: `Referral bonus for ${transaction.user.username}`
             }
           })
           
           // Update upline's balance
           await prisma.user.update({
-            where: { id: user.uplineId },
+            where: { id: transaction.user.uplineId },
             data: {
-              balance: {
-                increment: plan.referralBonus
-              }
+              balance: { increment: plan.referralBonus }
             }
           })
         }
       }
     }
-    
-    // If transaction is completed and it's a payout, update user balance
-    if (status === 'COMPLETED' && updatedTransaction.type === 'PAYOUT') {
-      const user = await prisma.user.findUnique({
-        where: { id: updatedTransaction.userId }
+
+    // Handle deposit rejection - delete user account
+    if (status === 'REJECTED' && transaction.type === 'DEPOSIT') {
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          username: `deleted_${transaction.userId}`,
+          walletAddress: `deleted_${transaction.userId}`
+        }
       })
-      
-      if (user) {
-        await prisma.user.update({
-          where: { id: updatedTransaction.userId },
-          data: {
-            balance: {
-              decrement: updatedTransaction.amount
-            },
-            totalEarned: {
-              increment: updatedTransaction.amount
-            }
-          }
-        })
-      }
     }
-    
-    // If transaction is completed and it's a deposit, update user balance
-    if (status === 'COMPLETED' && updatedTransaction.type === 'DEPOSIT') {
-      const user = await prisma.user.findUnique({
-        where: { id: updatedTransaction.userId }
+
+    // Handle withdrawal completion - delete user account
+    if (status === 'COMPLETED' && transaction.type === 'WITHDRAWAL') {
+      // Remove user from triangle position
+      await prisma.trianglePosition.updateMany({
+        where: { userId: transaction.userId },
+        data: { userId: null }
       })
-      
-      if (user) {
-        await prisma.user.update({
-          where: { id: updatedTransaction.userId },
-          data: {
-            balance: {
-              increment: updatedTransaction.amount
-            }
-          }
-        })
-      }
+
+      // Soft delete user account
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          username: `withdrawn_${transaction.userId}`,
+          walletAddress: `withdrawn_${transaction.userId}`
+        }
+      })
+
+      // Mark all user transactions as consolidated
+      await prisma.transaction.updateMany({
+        where: { userId: transaction.userId },
+        data: { status: 'CONSOLIDATED' }
+      })
     }
     
     return NextResponse.json(updatedTransaction)

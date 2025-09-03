@@ -18,6 +18,7 @@ import ChessReferrals from '@/components/Referrals/ChessReferrals'
 import ChessAdminDashboard from '@/components/Admin/ChessAdminDashboard'
 import ChessAdminUsers from '@/components/Admin/ChessAdminUsers'
 import ChessAdminTransactions from '@/components/Admin/ChessAdminTransactions'
+import ChessAdminTriangles from '@/components/Admin/ChessAdminTriangles'
 import ChessAdminPlans from '@/components/Admin/ChessAdminPlans'
 import ChessAdminSettings from '@/components/Admin/ChessAdminSettings'
 import ChessNotificationContainer from '@/components/Notifications/ChessNotificationContainer'
@@ -142,6 +143,8 @@ const AppContent: React.FC = () => {
                   return <ChessAdminUsers />
                 case 'admin-transactions':
                   return <ChessAdminTransactions />
+                case 'admin-triangles':
+                  return <ChessAdminTriangles />
                 case 'admin-plans':
                   return <ChessAdminPlans />
                 case 'admin-settings':
